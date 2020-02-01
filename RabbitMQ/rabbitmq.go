@@ -118,9 +118,8 @@ func (r *RabbitMQ) ConsumeSimple() {
 	forever := make(chan bool)
 	// Read the message from the channel in a goroutine
 	go func() {
-		for d:= range msgs {
+		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
-			fmt.Println(d.Body)
 		}
 	}()
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
