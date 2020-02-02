@@ -125,3 +125,87 @@ func (r *RabbitMQ) ConsumeSimple() {
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 	<-forever
 }
+
+// Create RabbitMQ instances using Publish/Subscribe Pattern
+func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
+	rabbitmq := NewRabbitMQ("", exchangeName, "")
+	// create RabbitMQ connection
+	var err error
+	rabbitmq.conn, err = amqp.Dial(rabbitmq.Mqurl)
+	rabbitmq.failOnErr(err, "failed to connect RabbitMQ!")
+	rabbitmq.channel, err = rabbitmq.conn.Channel()
+	rabbitmq.failOnErr(err, "failed to open the channel")
+	return rabbitmq
+}
+
+// Sending in Publish/Subscribe Pattern
+func (r *RabbitMQ) PublishPub(message string) {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"fanout", // Exchange types
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	err = r.channel.Publish(
+		r.Exchange,
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		})
+}
+
+func (r *RabbitMQ) ReceiveSub() {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"fanout", // Exchange types
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	// Try to create queues, name must be empty
+	q, err := r.channel.QueueDeclare(
+		"", // random
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the queue!")
+	err = r.channel.QueueBind(
+		q.Name,
+		"", // must be empty in Publish/Subscribe Pattern
+		r.Exchange,
+		false,
+		nil,
+	)
+	// Receive messages
+	messages, err := r.channel.Consume(
+		r.QueueName,
+		"",
+		true, // auto-ack
+		false,
+		false,
+		false,
+		nil,
+	)
+	forever := make(chan bool)
+	// Read the message from the channel in a goroutine
+	go func() {
+		for d := range messages {
+			log.Printf("Received a message: %s", d.Body)
+		}
+	}()
+	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	<-forever
+}
