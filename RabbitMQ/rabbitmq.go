@@ -126,7 +126,8 @@ func (r *RabbitMQ) ConsumeSimple() {
 	<-forever
 }
 
-// Create RabbitMQ instances using Publish/Subscribe Pattern
+// Publish/Subscribe Pattern
+// Create RabbitMQ instances
 func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
 	rabbitmq := NewRabbitMQ("", exchangeName, "")
 	// create RabbitMQ connection
@@ -250,6 +251,89 @@ func (r *RabbitMQ) ReceiveRouting() {
 	err := r.channel.ExchangeDeclare(
 		r.Exchange,
 		"direct", // Exchange types
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	q, err := r.channel.QueueDeclare(
+		"",
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the queue!")
+	err = r.channel.QueueBind(
+		q.Name,
+		r.Key,
+		r.Exchange,
+		false,
+		nil,
+	)
+	// Receive messages
+	messages, err := r.channel.Consume(
+		r.QueueName,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	forever := make(chan bool)
+	// Read the message from the channel in a goroutine
+	go func() {
+		for d := range messages {
+			log.Printf("Received a message: %s", d.Body)
+		}
+	}()
+	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	<-forever
+}
+
+// Topic Pattern
+func NewRabbitMQTopic(exchangeName string, routingKey string) *RabbitMQ{
+	rabbitmq := NewRabbitMQ("", exchangeName, routingKey)
+	var err error
+	rabbitmq.conn, err = amqp.Dial(rabbitmq.Mqurl)
+	rabbitmq.failOnErr(err, "failed to connect RabbitMQ!")
+	rabbitmq.channel, err = rabbitmq.conn.Channel()
+	rabbitmq.failOnErr(err, "failed to open the channel")
+	return rabbitmq
+}
+
+// Sending messages
+func (r *RabbitMQ) PublishTopic(message string) {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"topic", // In topic pattern, use topic
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	err = r.channel.Publish(
+		r.Exchange,
+		r.Key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		})
+}
+
+// Receive messages
+func (r *RabbitMQ) ReceiveTopic() {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"topic",
 		true,
 		false,
 		false,
