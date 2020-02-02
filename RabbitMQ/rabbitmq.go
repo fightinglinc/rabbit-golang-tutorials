@@ -138,8 +138,9 @@ func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
 	return rabbitmq
 }
 
-// Sending in Publish/Subscribe Pattern
+// Sending messages using Publish/Subscribe Pattern
 func (r *RabbitMQ) PublishPub(message string) {
+	// Create an exchange
 	err := r.channel.ExchangeDeclare(
 		r.Exchange,
 		"fanout", // Exchange types
@@ -194,6 +195,89 @@ func (r *RabbitMQ) ReceiveSub() {
 		r.QueueName,
 		"",
 		true, // auto-ack
+		false,
+		false,
+		false,
+		nil,
+	)
+	forever := make(chan bool)
+	// Read the message from the channel in a goroutine
+	go func() {
+		for d := range messages {
+			log.Printf("Received a message: %s", d.Body)
+		}
+	}()
+	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	<-forever
+}
+
+// Routing Pattern
+func NewRabbitMQRouting(exchangeName string, routingKey string) *RabbitMQ{
+	rabbitmq := NewRabbitMQ("", exchangeName, routingKey)
+	var err error
+	rabbitmq.conn, err = amqp.Dial(rabbitmq.Mqurl)
+	rabbitmq.failOnErr(err, "failed to connect RabbitMQ!")
+	rabbitmq.channel, err = rabbitmq.conn.Channel()
+	rabbitmq.failOnErr(err, "failed to open the channel")
+	return rabbitmq
+}
+
+// Sending messages
+func (r *RabbitMQ) PublishRouting(message string) {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"direct", // In routing pattern, use direct instead of fanout
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	err = r.channel.Publish(
+		r.Exchange,
+		r.Key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		})
+}
+
+// Receive messages
+func (r *RabbitMQ) ReceiveRouting() {
+	err := r.channel.ExchangeDeclare(
+		r.Exchange,
+		"direct", // Exchange types
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the exchange!")
+	q, err := r.channel.QueueDeclare(
+		"",
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnErr(err, "Fail to declare the queue!")
+	err = r.channel.QueueBind(
+		q.Name,
+		r.Key,
+		r.Exchange,
+		false,
+		nil,
+	)
+	// Receive messages
+	messages, err := r.channel.Consume(
+		r.QueueName,
+		"",
+		true,
 		false,
 		false,
 		false,
